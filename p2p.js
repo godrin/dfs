@@ -9,7 +9,7 @@ var remotePort = process.argv[3];
 if (!port)
 	port = 8080;
 
-var transceiver = function(port, hiCallback, queryCallback) {
+var transceiver = function(port, hiCallback, queryCallback,hoCallback) {
 
 	var app = express();
 
@@ -27,6 +27,7 @@ var transceiver = function(port, hiCallback, queryCallback) {
 	}
 	hook('/');
 	hook('/hi', hiCallback);
+	hook('/ho', hoCallback);
 	hook('/query', queryCallback);
 	app.listen(port);
 
@@ -55,6 +56,7 @@ var transceiver = function(port, hiCallback, queryCallback) {
 	}
 	return {
 		hi : getter('hi'),
+		ho : getter('ho'),
 		query : getter("query")
 	};
 };
@@ -62,30 +64,49 @@ var transceiver = function(port, hiCallback, queryCallback) {
 var node = function(config) {
 	var o = {};
 	var neighbors = [];
+	var neighborsToCheck = [];
 	var hiHandler = function(options, callback) {
 		console.log("HI called", options);
-		neighbors.push(options);
 		console.log("neighbors", neighbors);
+		
 		callback({
 			text : "HEY",
 			data : options
 		});
+		checkIfServer(options);
 	};
+	var hoHandler = function(ops,callback) {
+		console.log("HO handler");
+		callback("YAYP2P");
+	};
+	function checkIfServer(options) {
+		console.log("HOOOO",options);
+		
+		tx.ho(options,{},function(data) {
+			console.log("HOooooooo");
+			if (data == "YAYP2P") {
+				neighbors.push(options);
+				console.log("New neighbor",options);
+			} else {
+				console.log("HO failed for",options);
+			}
+		});
+	}
 
 	var queryHandler = function(options, callback) {
 		callback(neighbors);
 	};
 
-	var tx = transceiver(config.port, hiHandler, queryHandler);
+	var tx = transceiver(config.port, hiHandler, queryHandler,hoHandler);
 	o.id = config.id;
 	if (config.master) {
 		tx.hi(config.master, {
 			id : config.id,
-			host : config.localhost,
+			host : config.host,
 			port : config.port
 		}, function() {
 			tx.query(config.master, {}, function(result) {
-				console.log("QUERY RESULT", result);
+				console.log("found neighbors", result);
 			});
 		});
 	}
@@ -93,15 +114,16 @@ var node = function(config) {
 	return o;
 };
 
-// transceiver(port);
-// transceiver(port + 1);
 node({
 	id : 1,
-	port : 8080
+	port : 8080,
+	host:'localhost'
 });
+
 node({
 	id : 2,
 	port : 8081,
+	host:'localhost',
 	master : {
 		host : 'localhost',
 		port : 8080
